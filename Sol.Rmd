@@ -1,0 +1,131 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Olga Maria Serrano Ramos"
+date: "November, 2014"
+output: html_document
+---
+  
+  ## Background
+  Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Data
+
+The training data for this project are available here: 
+  
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+  
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+## What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details. 
+
+## Reproducibility 
+
+Due to security concerns with the exchange of R code, your code will not be run during the evaluation by your classmates. Please be sure that if they download the repo, they will be able to view the compiled HTML version of your analysis. 
+
+
+## Reading and Separating testing Data
+
+```{r}
+library(caret) 
+
+set.seed(123)
+ftraining <- read.csv("./Data/pml-training.csv",na.strings = c("NA", ""))
+ftesting <- read.csv("./Data/pml-testing.csv",na.strings = c("NA", ""))
+
+inTrain = createDataPartition(ftraining$classe, p = 0.75, list = F)
+ctraining = ftraining[inTrain,]
+ctesting  = ftraining[-inTrain,]
+```
+
+## cleaning data
+### cleaning NAS
+
+```{r}
+
+listtraining=(colSums(is.na(ctraining)) == 0)
+listtrainingMatrix=as.matrix(listtraining)
+namesCleaned=names(listtrainingMatrix[listtrainingMatrix[,1]==TRUE,])
+
+ctraining <- ctraining[, (colSums(is.na(ctraining)) == 0)]
+ctesting=ctesting[ , which(names(ctesting) %in% namesCleaned)]
+
+ctraining = ctraining[,8:60]
+ctesting <-ctesting[,8:60]
+
+```
+### cleaning higestCorrs
+```{r}
+nums <- sapply(ctraining, is.numeric)
+d= ctraining[ , nums]
+corrMatrix=as.matrix(cor(d))
+library('corrplot')
+corrplot(corrMatrix, method = "circle")
+highCorrCols=findCorrelation(corrMatrix, cutoff = .90)
+highCorrFeatures = names(ctraining)[highCorrCols]
+ctraining = ctraining[,-highCorrCols]
+ctesting = ctesting[,-highCorrCols]
+```
+
+### Same classes for each dataframe
+
+```{r}
+class(ctesting[1:46]) <- class(ctraining[1:46])
+rtesting = ctesting ## dataframe to compare results
+ctesting = ctesting[,-46] ## data frame to test
+```
+
+
+## Testing modeling k-Nearest Neighbors.
+### Accuracy : 0.917
+
+```{r}
+
+ctrl = trainControl(method = "adaptive_cv")
+model1_KNN = train(classe ~ ., ctraining, method = "knn", trControl = ctrl)
+model1_KNN
+pred <- predict(model1_KNN, newdata=ctesting)
+confusionMatrix(pred, rtesting$classe)
+```
+## Testing modeling randomForest.
+### Accuracy : 0.9912
+```{r}
+
+ctrl = trainControl(method = "oob")
+model2_RF = train(classe ~ ., ctraining, method = "rf", ntree = 200, trControl = ctrl)
+model2_RF
+pred <- predict(model2_RF, newdata=ctesting)
+confusionMatrix(pred, rtesting$classe)
+```
+## Random Forest is selected to write solution
+### firstable clean ftesting
+```{r}
+
+ftesting <- read.csv("./Data/pml-testing.csv",na.strings = c("NA", ""))
+ftesting=ftesting[ , which(names(ftesting) %in% namesCleaned)]
+ftesting <-ftesting[,8:59]
+ftesting = ftesting[,-highCorrCols]
+class(ftesting[1:45]) <- class(ctraining[1:45])
+
+
+pred <- predict(model2_RF, newdata=ftesting)
+pred
+```
+### write submision files
+```{r}
+
+  for(i in 1:length(pred)){
+    filename = paste0("./submit/sol_",i,".txt")
+    write.table(pred[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+
+
+```
